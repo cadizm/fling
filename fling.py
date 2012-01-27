@@ -9,6 +9,8 @@
 # TODO: Python Imaging Library (PIL) to parse
 # initial grid position from an image?
 #
+# Cache input vertices and return known solutions (memoize)?
+#
 
 #    0   1   2   3   4   5   6
 #  +---+---+---+---+---+---+---+
@@ -62,6 +64,9 @@ class Vertex:
     def __str__(self):
         return "%s(%d,%d)" % (self.name, self.row, self.col)
 
+    def __hash__(self):
+        return self.row * 7 + self.col  # 7 columns
+
 
 def cellstr(row, col, L):
     for n in L:
@@ -87,44 +92,28 @@ def applyEdge(e, V):
     dest = W[W.index(e[1])]
 
     if src.row == dest.row:  # row
-        R = filter(lambda x: x.row == src.row, V)
-        R.sort(key=lambda x: x.col)
-
-        if src.col - dest.col < 0:  # right
-            if abs(src.col - dest.col) != 1:  # not adjacent
-                src.col = dest.col - 1
-            if dest == R[-1]:  # if dest is last vertex
-                W.remove(dest)
-            else:
-                return applyEdge((dest, R[R.index(dest) + 1]), W)
-
-        else:  # left
-            if abs(src.col - dest.col) != 1:  # not adjacent
-                src.col = dest.col + 1
-            if dest == R[0]:  # if dest is first vertex
-                W.remove(dest)
-            else:
-                return applyEdge((dest, R[R.index(dest) - 1]), W)
-
+        rc = ('row', 'col')
     else:  # col
-        C = filter(lambda x: x.col == src.col, V)
-        C.sort(key=lambda x: x.row)
+        rc = ('col', 'row')
 
-        if src.row - dest.row < 0:  # down
-            if abs(src.row - dest.row) != 1:  # not adjacent
-                src.row = dest.row - 1
-            if dest == C[-1]:  # if dest is last vertex
-                W.remove(dest)
-            else:
-                return applyEdge((dest, C[C.index(dest) + 1]), W)
+    F = filter(lambda x: getattr(x, rc[0]) == getattr(src, rc[0]), V)
+    F.sort(key=lambda x: getattr(x, rc[1]))
 
-        else:  # up
-            if abs(src.row - dest.row) != 1:  # not adjacent
-                src.row = dest.row + 1
-            if dest == C[0]:  # if dest is first vertex
-                W.remove(dest)
-            else:
-                return applyEdge((dest, C[C.index(dest) - 1]), W)
+    if getattr(src, rc[1]) - getattr(dest, rc[1]) < 0:  # right/down
+        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:  # not adjacent
+            setattr(src, rc[1], getattr(dest, rc[1]) - 1)
+        if dest == F[-1]:  # if dest is last vertex
+            W.remove(dest)
+        else:
+            return applyEdge((dest, F[F.index(dest) + 1]), W)
+
+    else:  # left/up
+        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:  # not adjacent
+            setattr(src, rc[1], getattr(dest, rc[1]) + 1)
+        if dest == F[0]:  # if dest is first vertex
+            W.remove(dest)
+        else:
+            return applyEdge((dest, F[F.index(dest) - 1]), W)
 
     return W
 
@@ -134,23 +123,14 @@ def adjacentVertices(v, V):
     A  = []
     for u in V:
         if u == v:
-            # gather row adjacent
-            R = filter(lambda x: x.row == v.row, V)
-            R.sort(key=lambda x: x.col)
-            i = R.index(u)
-            if i - 1 >= 0:
-                A.append(R[i - 1])
-            if i + 1 < len(R):
-                A.append(R[i + 1])
-
-            # gather col adjacent
-            R = filter(lambda x: x.col == v.col, V)
-            R.sort(key=lambda x: x.row)
-            i = R.index(u)
-            if i - 1 >= 0:
-                A.append(R[i - 1])
-            if i + 1 < len(R):
-                A.append(R[i + 1])
+            for rc in [('row', 'col'), ('col', 'row')]:
+                F = filter(lambda x: getattr(x, rc[0]) == getattr(v, rc[0]), V)
+                F.sort(key=lambda x: getattr(x, rc[1]))
+                i = F.index(u)
+                if i - 1 >= 0:
+                    A.append(F[i - 1])
+                if i + 1 < len(F):
+                    A.append(F[i + 1])
     return A
 
 
@@ -159,7 +139,7 @@ def findEdges(V):
     E = []
     for u in V:
         for v in adjacentVertices(u, V):
-            if u.row == v.row and  abs(u.col - v.col) > 1:
+            if u.row == v.row and abs(u.col - v.col) > 1:
                 E.append((u, v))
             if u.col == v.col and abs(u.row - v.row) > 1:
                 E.append((u, v))
@@ -203,6 +183,8 @@ if __name__ == '__main__':
          Vertex("J", 5, 5),
          Vertex("K", 6, 1),
          Vertex("L", 6, 4)]
+
+    h = reduce(lambda x, y: "%s-%s" % (x, y), sorted([v.__hash__() for v in V]))
 
     G = []
     P = []
