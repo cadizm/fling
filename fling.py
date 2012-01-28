@@ -2,36 +2,64 @@
 
 #
 # M. Cadiz (michael.cadiz AT gmail)
-# Wed Jan 25 00:05:49 PST 2012
+# Sat Jan 28 14:40:55 PST 2012
 #
 
 #
 # TODO: Python Imaging Library (PIL) to parse
-# initial grid position from an image?
-#
-# Cache input vertices and return known solutions (memoize)?
+# initial graph position from an image?
 #
 
-#    0   1   2   3   4   5   6
-#  +---+---+---+---+---+---+---+
-# 0| A |   |   |   | B |   |   |
-#  +---+---+---+---+---+---+---+
-# 1| C |   |   |   |   |   |   |
-#  +---+---+---+---+---+---+---+
-# 2| D |   | E |   |   |   |   |
-#  +---+---+---+---+---+---+---+
-# 3|   |   |   |   |   | F | G |
-#  +---+---+---+---+---+---+---+
-# 4|   |   |   |   |   |   | H |
-#  +---+---+---+---+---+---+---+
-# 5|   |   |   | I |   | J |   |
-#  +---+---+---+---+---+---+---+
-# 6|   | K |   |   | L |   |   |
-#  +---+---+---+---+---+---+---+
-# 7|   |   |   |   |   |   |   |
-#  +---+---+---+---+---+---+---+
+#     0    1    2    3    4    5    6
+#  +----+----+----+----+----+----+----+
+# 0|  0 |    |    |    |    |  5 |    |
+#  +----+----+----+----+----+----+----+
+# 1|    |    |    |    |    |    |    |
+#  +----+----+----+----+----+----+----+
+# 2|    |    |    |    |    |    |    |
+#  +----+----+----+----+----+----+----+
+# 3|    |    |    |    |    | 26 |    |
+#  +----+----+----+----+----+----+----+
+# 4|    |    |    | 31 | 32 |    |    |
+#  +----+----+----+----+----+----+----+
+# 5|    | 36 |    |    | 39 |    | 41 |
+#  +----+----+----+----+----+----+----+
+# 6|    | 43 | 44 |    |    |    |    |
+#  +----+----+----+----+----+----+----+
+# 7| 49 | 50 | 51 |    |    |    |    |
+#  +----+----+----+----+----+----+----+
 
 import copy
+import json
+import sqlite3
+
+
+class Status:
+    FAILURE = 0
+    SUCCESS = 1
+    NO_SOLUTION = "NO_SOLUTION"
+
+
+def cellstr(row, col, V):
+    for v in V:
+        if v.row == row and v.col == col:
+            return "%2s" % (v.__hash__())
+    return "  "
+
+
+def printGraph(V):
+    print "+----+----+----+----+----+----+----+"
+    for row in range(8):
+        for col in range(7):
+            print "| %s" % (cellstr(row, col, V)),
+        print "|\n+----+----+----+----+----+----+----+"
+    print
+
+
+def printSolution(G, P):
+    for i, p in enumerate(P):
+        print "%2s -> %2s\n" % (p[0], p[1])
+        printGraph(G[i])
 
 
 class Stats:
@@ -41,47 +69,106 @@ class Stats:
         self.solutionDepth = 0
         self.backtrackDepth = 0
 
+    def printStats(self):
+        print """Edges discovered : %d
+Edges searched   : %d
+Solution depth   : %d
+Backtrack depth  : %d""" % (self.edgesDiscovered, self.edgesSearched,
+                            self.solutionDepth, self.backtrackDepth)
 
-class Status:
-    FAILURE = 0
-    SUCCESS = 1
+
+class FlingDatabase():
+    def __init__(self):
+        self.conn = sqlite3.connect('/Users/cadizm/var/fling.db')
+        self.conn.row_factory = sqlite3.Row
+        c = self.conn.cursor()
+
+        c.execute("""create table if not exists fling
+                    (id integer primary key asc,
+                     puzzle text,
+                     graph text,
+                     solution text)""")
+
+        self.conn.commit()
+        c.close()
+
+
+    def getSolution(self, V):
+        p = json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':'))
+        c = self.conn.cursor()
+
+        c.execute("select * from fling where puzzle = ? limit 1", (p,))
+        r = c.fetchone()
+        c.close()
+
+        if r:
+            if r['solution'] == Status.NO_SOLUTION:
+                return ([], Status.NO_SOLUTION)
+            else:
+                return (json.loads(r['graph'], object_hook=Vertex.json_hook),
+                        json.loads(r['solution'], object_hook=Vertex.json_hook))
+        else:
+            return ([], [])
+
+
+    def putSolution(self, V, G, P):
+        (p, g, s) = (json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')), '', P)
+
+        if P != Status.NO_SOLUTION:
+            g = json.dumps(G, cls=VertexEncoder, separators=(',', ':'))
+            s = json.dumps(P, cls=VertexEncoder, separators=(',', ':'))
+
+        c = self.conn.cursor()
+        c.execute("insert into fling (puzzle, graph, solution) values (?, ?, ?)", (p, g, s))
+        self.conn.commit()
+        c.close()
 
 
 class Vertex:
-    def __init__(self, name, row, col):
-        self.name = name
+    def __init__(self, row, col):
         self.row = row
         self.col = col
 
     def __eq__(self, other):
-        return self.name == other.name and \
-            self.row == other.row and self.col == other.col
+        return self.row == other.row and self.col == other.col
 
     def __ne__(self, other):
-        return self.name != other.name or \
-            self.row != other.row or self.col != other.col
+        return self.row != other.row or self.col != other.col
+
+    def __cmp__(self, other):
+        if self.row < other.row:
+            return -1
+        elif self.row == other.row:
+            if self.col < other.col:
+                return -1
+            elif self.col == other.col:
+                return 0
+            else:
+                return 1
+        else:
+            return 1
 
     def __str__(self):
-        return "%s(%d,%d)" % (self.name, self.row, self.col)
+        return "%2s (%d, %d)" % (self.__hash__(), self.row, self.col)
 
     def __hash__(self):
         return self.row * 7 + self.col  # 7 columns
 
+    @staticmethod
+    def fromhash(h):
+        return Vertex(h / 7, h % 7)
 
-def cellstr(row, col, L):
-    for n in L:
-        if n.row == row and n.col == col:
-            return n.name
-    return " "
+    @staticmethod
+    def json_hook(v):
+        return Vertex(v['row'], v['col'])
 
 
-def drawGrid(L):
-    print "+---+---+---+---+---+---+---+"
-    for row in range(8):
-        for col in range(7):
-            print "| %s" % (cellstr(row, col, L)),
-        print "|\n+---+---+---+---+---+---+---+"
-    print
+class VertexEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Vertex):
+            return { 'row': o.row, 'col': o.col }
+        else:
+            return json.JSONEncoder(self, o)
 
 
 def applyEdge(e, V):
@@ -171,37 +258,36 @@ def solve(V, G, P, s):
 
 if __name__ == '__main__':
 
-    V = [Vertex("A", 0, 0),
-         Vertex("B", 0, 4),
-         Vertex("C", 1, 0),
-         Vertex("D", 2, 0),
-         Vertex("E", 2, 2),
-         Vertex("F", 3, 5),
-         Vertex("G", 3, 6),
-         Vertex("H", 4, 6),
-         Vertex("I", 5, 3),
-         Vertex("J", 5, 5),
-         Vertex("K", 6, 1),
-         Vertex("L", 6, 4)]
+    V = [Vertex(0, 0),
+         Vertex(0, 5),
+         Vertex(3, 5),
+         Vertex(4, 3),
+         Vertex(4, 4),
+         Vertex(5, 1),
+         Vertex(5, 4),
+         Vertex(5, 6),
+         Vertex(6, 1),
+         Vertex(6, 2),
+         Vertex(7, 0),
+         Vertex(7, 1),
+         Vertex(7, 2)]
 
-    h = reduce(lambda x, y: "%s-%s" % (x, y), sorted([v.__hash__() for v in V]))
+    printGraph(V)
 
-    G = []
-    P = []
-    s = Stats()
+    db = FlingDatabase()
+    (G, P) = db.getSolution(V)
 
-    drawGrid(V)
-
-    if solve(V, G, P, s):
-        if len(G) != len(P):
-            print "Error constructing path"
-        else:
-            for i, p in enumerate(P):
-                print "%s -> %s\n" % (p[0], p[1])
-                drawGrid(G[i])
-            print """Edges discovered : %d
-Edges searched   : %d
-Solution depth   : %d
-Backtrack depth  : %d""" % (s.edgesDiscovered, s.edgesSearched, s.solutionDepth, s.backtrackDepth)
-    else:
+    if P == Status.NO_SOLUTION:
+        print "Using cached..."
         print "No solution found"
+    elif P:
+        print "Using cached solution..."
+        printSolution(G, P)
+    else:
+        print "Solving..."
+        if solve(V, G, P, Stats()):
+            db.putSolution(V, G, P)
+            printSolution(G, P)
+        else:
+            db.putSolution(V, [], Status.NO_SOLUTION)
+            print "No solution found"
