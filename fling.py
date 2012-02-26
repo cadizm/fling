@@ -2,7 +2,7 @@
 
 #
 # M. Cadiz (michael.cadiz AT gmail)
-# Sat Jan 28 14:40:55 PST 2012
+# Sat Feb 25 16:09:49 PST 2012
 #
 
 #
@@ -40,46 +40,24 @@ class Status:
     NO_SOLUTION = "NO_SOLUTION"
 
 
-def cellstr(row, col, V):
-    for v in V:
-        if v.row == row and v.col == col:
-            return "%2s" % (v.__hash__())
-    return "  "
-
-
-def printGraph(V):
-    print "+----+----+----+----+----+----+----+"
-    for row in range(8):
-        for col in range(7):
-            print "| %s" % (cellstr(row, col, V)),
-        print "|\n+----+----+----+----+----+----+----+"
-    print
-
-
-def printSolution(G, P):
-    for i, p in enumerate(P):
-        print "%2s -> %2s\n" % (p[0], p[1])
-        printGraph(G[i])
-
-
 class Stats:
     def __init__(self):
-        self.edgesDiscovered = 0
-        self.edgesSearched = 0
-        self.solutionDepth = 0
-        self.backtrackDepth = 0
+        self.edges_discovered = 0
+        self.edges_searched = 0
+        self.solution_depth = 0
+        self.backtrack_depth = 0
 
-    def printStats(self):
+    def print_stats(self):
         print """Edges discovered : %d
 Edges searched   : %d
 Solution depth   : %d
-Backtrack depth  : %d""" % (self.edgesDiscovered, self.edgesSearched,
-                            self.solutionDepth, self.backtrackDepth)
+Backtrack depth  : %d""" % (self.edges_discovered, self.edges_searched,
+                            self.solution_depth, self.backtrack_depth)
 
 
 class FlingDatabase():
     def __init__(self):
-        self.conn = sqlite3.connect('/Users/cadizm/var/fling.db')
+        self.conn = sqlite3.connect('fling.db')
         self.conn.row_factory = sqlite3.Row
         c = self.conn.cursor()
 
@@ -92,8 +70,7 @@ class FlingDatabase():
         self.conn.commit()
         c.close()
 
-
-    def getSolution(self, V):
+    def get_solution(self, V):
         p = json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':'))
         c = self.conn.cursor()
 
@@ -110,8 +87,7 @@ class FlingDatabase():
         else:
             return ([], [])
 
-
-    def putSolution(self, V, G, P):
+    def put_solution(self, V, G, P):
         (p, g, s) = (json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')), '', P)
 
         if P != Status.NO_SOLUTION:
@@ -155,7 +131,7 @@ class Vertex:
         return self.row * 7 + self.col  # 7 columns
 
     @staticmethod
-    def fromhash(h):
+    def from_hash(h):
         return Vertex(h / 7, h % 7)
 
     @staticmethod
@@ -171,42 +147,68 @@ class VertexEncoder(json.JSONEncoder):
             return json.JSONEncoder(self, o)
 
 
-def applyEdge(e, V):
-#    print "applying %s -> %s" % (e[0], e[1])
+def cellstr(row, col, V):
+    for v in V:
+        if v.row == row and v.col == col:
+            return "%2s" % (v.__hash__())
+    return "  "
 
+
+def print_graph(V):
+    print "+----+----+----+----+----+----+----+"
+    for row in range(8):
+        for col in range(7):
+            print "| %s" % (cellstr(row, col, V)),
+        print "|\n+----+----+----+----+----+----+----+"
+    print
+
+
+def print_solution(G, P):
+    for i, p in enumerate(P):
+        print "%2s -> %2s\n" % (p[0], p[1])
+        print_graph(G[i])
+
+
+def apply_edge(e, V):
     W = copy.deepcopy(V)
     src = W[W.index(e[0])]
     dest = W[W.index(e[1])]
 
-    if src.row == dest.row:  # row
+    if src.row == dest.row:
         rc = ('row', 'col')
-    else:  # col
+    else:
         rc = ('col', 'row')
 
     F = filter(lambda x: getattr(x, rc[0]) == getattr(src, rc[0]), V)
     F.sort(key=lambda x: getattr(x, rc[1]))
 
-    if getattr(src, rc[1]) - getattr(dest, rc[1]) < 0:  # right/down
-        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:  # not adjacent
+    # right/down
+    if getattr(src, rc[1]) - getattr(dest, rc[1]) < 0:
+        # not adjacent
+        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:
             setattr(src, rc[1], getattr(dest, rc[1]) - 1)
-        if dest == F[-1]:  # if dest is last vertex
+        # if dest is last vertex
+        if dest == F[-1]:
             W.remove(dest)
         else:
-            return applyEdge((dest, F[F.index(dest) + 1]), W)
+            return apply_edge((dest, F[F.index(dest) + 1]), W)
 
-    else:  # left/up
-        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:  # not adjacent
+    # left/up
+    else:
+        # not adjacent
+        if abs(getattr(src, rc[1]) - getattr(dest, rc[1])) != 1:
             setattr(src, rc[1], getattr(dest, rc[1]) + 1)
-        if dest == F[0]:  # if dest is first vertex
+        # if dest is first vertex
+        if dest == F[0]:
             W.remove(dest)
         else:
-            return applyEdge((dest, F[F.index(dest) - 1]), W)
+            return apply_edge((dest, F[F.index(dest) - 1]), W)
 
     return W
 
 
-# return list of vertices adjacent to v in V
-def adjacentVertices(v, V):
+def adjacent_vertices(v, V):
+    "Return list of vertices adjacent to v in V"
     A  = []
     for u in V:
         if u == v:
@@ -221,11 +223,11 @@ def adjacentVertices(v, V):
     return A
 
 
-# edges are the legal row/col moves
-def findEdges(V):
+def find_edges(V):
+    "Return the edges in V -- the legal row/col moves"
     E = []
     for u in V:
-        for v in adjacentVertices(u, V):
+        for v in adjacent_vertices(u, V):
             if u.row == v.row and abs(u.col - v.col) > 1:
                 E.append((u, v))
             if u.col == v.col and abs(u.row - v.row) > 1:
@@ -237,19 +239,19 @@ def solve(V, G, P, s):
     if len(V) == 1:
         return Status.SUCCESS
 
-    E = findEdges(V)
-    s.edgesDiscovered += len(E)
+    E = find_edges(V)
+    s.edges_discovered += len(E)
 
     for e in E:
-        s.edgesSearched += 1
-        W = applyEdge(e, V)
+        s.edges_searched += 1
+        W = apply_edge(e, V)
         G.append(W)
         P.append(e)
         if solve(W, G, P, s):
-            s.solutionDepth += 1
+            s.solution_depth += 1
             return Status.SUCCESS
         else:
-            s.backtrackDepth += 1
+            s.backtrack_depth += 1
             G.pop()
             P.pop()
 
@@ -272,22 +274,22 @@ if __name__ == '__main__':
          Vertex(7, 1),
          Vertex(7, 2)]
 
-    printGraph(V)
+    print_graph(V)
 
     db = FlingDatabase()
-    (G, P) = db.getSolution(V)
+    (G, P) = db.get_solution(V)
 
     if P == Status.NO_SOLUTION:
         print "Using cached..."
         print "No solution found"
     elif P:
         print "Using cached solution..."
-        printSolution(G, P)
+        print_solution(G, P)
     else:
         print "Solving..."
         if solve(V, G, P, Stats()):
-            db.putSolution(V, G, P)
-            printSolution(G, P)
+            db.put_solution(V, G, P)
+            print_solution(G, P)
         else:
-            db.putSolution(V, [], Status.NO_SOLUTION)
+            db.put_solution(V, [], Status.NO_SOLUTION)
             print "No solution found"
