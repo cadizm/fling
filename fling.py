@@ -5,11 +5,6 @@
 # Sat Feb 25 16:09:49 PST 2012
 #
 
-#
-# TODO: Python Imaging Library (PIL) to parse
-# initial graph position from an image?
-#
-
 #     0    1    2    3    4    5    6
 #  +----+----+----+----+----+----+----+
 # 0|  0 |    |    |    |    |  5 |    |
@@ -71,6 +66,7 @@ class FlingDatabase():
         c.close()
 
     def get_solution(self, V):
+        # Sort V in order to lookup correct key
         p = json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':'))
         c = self.conn.cursor()
 
@@ -80,15 +76,16 @@ class FlingDatabase():
 
         if r:
             if r['solution'] == Status.NO_SOLUTION:
-                return ([], Status.NO_SOLUTION)
+                return [], Status.NO_SOLUTION
             else:
                 return (json.loads(r['graph'], object_hook=Vertex.json_hook),
                         json.loads(r['solution'], object_hook=Vertex.json_hook))
         else:
-            return ([], [])
+            return [], []
 
     def put_solution(self, V, G, P):
-        (p, g, s) = (json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')), '', P)
+        # Sort V in order to put correct key
+        p, g, s = json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')), '', P
 
         if P != Status.NO_SOLUTION:
             g = json.dumps(G, cls=VertexEncoder, separators=(',', ':'))
@@ -136,13 +133,13 @@ class Vertex:
 
     @staticmethod
     def json_hook(v):
-        return Vertex(v['row'], v['col'])
+        return Vertex(v['r'], v['c'])
 
 
 class VertexEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, Vertex):
-            return { 'row': o.row, 'col': o.col }
+            return { 'r': o.row, 'c': o.col }
         else:
             return json.JSONEncoder(self, o)
 
@@ -152,6 +149,10 @@ def cellstr(row, col, V):
         if v.row == row and v.col == col:
             return "%2s" % (v.__hash__())
     return "  "
+
+
+def graph_to_json(V):
+    return json.dumps(V, cls=VertexEncoder, separators=(',', ':'))
 
 
 def print_graph(V):
@@ -235,7 +236,8 @@ def find_edges(V):
     return E
 
 
-def solve(V, G, P, s):
+def _solve(V, G, P, s):
+    "Internal `solve'. Clients should use `solve()'"
     if len(V) == 1:
         return Status.SUCCESS
 
@@ -247,7 +249,7 @@ def solve(V, G, P, s):
         W = apply_edge(e, V)
         G.append(W)
         P.append(e)
-        if solve(W, G, P, s):
+        if _solve(W, G, P, s):
             s.solution_depth += 1
             return Status.SUCCESS
         else:
@@ -258,8 +260,80 @@ def solve(V, G, P, s):
     return Status.FAILURE
 
 
-if __name__ == '__main__':
+def solve(p):
+    """Solve puzzle p.
 
+    p should be a graph in json string format.
+
+    A 2-tuple of json strings `(G, P)' is returned if a solution is found.
+    If p cannot be parsed or if a solution is not found, a 2-tuple of empty
+    strings is returned.
+
+    G is an array of graphs representing the puzzle transitions.
+
+    P is an array of `paths' that should be followed in order to reach
+    the solution represented by (thus len(G) == len(P)).
+
+    A path is a 2-tuple of vertices ((x0, y0), (x1, y1)) representing a
+    given move in G (e.g. move (x0, y0) -> (x1, y1)).
+
+    """
+
+    db = FlingDatabase()
+
+    try:
+        V = json.loads(p, object_hook=Vertex.json_hook)
+    except ValueError:
+        return '', ''
+    except:
+        return '', ''
+
+    G, P = db.get_solution(V)
+
+    if P == Status.NO_SOLUTION:
+        return '', ''
+    elif P:
+        return (json.dumps(G, cls=VertexEncoder, separators=(',', ':')),
+                json.dumps(P, cls=VertexEncoder, separators=(',', ':')))
+    else:
+        if _solve(V, G, P, Stats()):
+            db.put_solution(V, G, P)
+            return (json.dumps(G, cls=VertexEncoder, separators=(',', ':')),
+                    json.dumps(P, cls=VertexEncoder, separators=(',', ':')))
+        else:
+            db.put_solution(V, [], Status.NO_SOLUTION)
+            return '', ''
+
+
+def testcase1(V):
+    print_graph(V)
+
+    db = FlingDatabase()
+    G, P = db.get_solution(V)
+
+    if P == Status.NO_SOLUTION:
+        print "Using cached..."
+        print "No solution found"
+    elif P:
+        print "Using cached solution..."
+        print_solution(G, P)
+    else:
+        print "Solving..."
+        if _solve(V, G, P, Stats()):
+            db.put_solution(V, G, P)
+            print_solution(G, P)
+        else:
+            db.put_solution(V, [], Status.NO_SOLUTION)
+            print "No solution found"
+
+
+def testcase2(V):
+    G, P = solve(graph_to_json(V))
+    for x in (graph_to_json(V), G, P):
+        print x
+
+
+if __name__ == '__main__':
     V = [Vertex(0, 0),
          Vertex(0, 5),
          Vertex(3, 5),
@@ -274,22 +348,5 @@ if __name__ == '__main__':
          Vertex(7, 1),
          Vertex(7, 2)]
 
-    print_graph(V)
-
-    db = FlingDatabase()
-    (G, P) = db.get_solution(V)
-
-    if P == Status.NO_SOLUTION:
-        print "Using cached..."
-        print "No solution found"
-    elif P:
-        print "Using cached solution..."
-        print_solution(G, P)
-    else:
-        print "Solving..."
-        if solve(V, G, P, Stats()):
-            db.put_solution(V, G, P)
-            print_solution(G, P)
-        else:
-            db.put_solution(V, [], Status.NO_SOLUTION)
-            print "No solution found"
+    testcase1(V)
+    testcase2(V)
