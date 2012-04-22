@@ -2,7 +2,7 @@
 
 #
 # M. Cadiz (michael.cadiz AT gmail)
-# Sat Feb 25 16:09:49 PST 2012
+# Sat Apr 21 21:08:12 PDT 2012
 #
 
 #     0    1    2    3    4    5    6
@@ -27,6 +27,12 @@
 import copy
 import json
 import sqlite3
+import logging
+
+
+logging.basicConfig(filename='/tmp/fling.log',
+                    level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class Status:
@@ -52,7 +58,7 @@ Backtrack depth  : %d""" % (self.edges_discovered, self.edges_searched,
 
 class FlingDatabase():
     def __init__(self):
-        self.conn = sqlite3.connect('fling.db')
+        self.conn = sqlite3.connect('/tmp/fling.db')
         self.conn.row_factory = sqlite3.Row
         c = self.conn.cursor()
 
@@ -279,6 +285,8 @@ def solve(p):
 
     """
 
+    logging.info('solve: %s' % p)
+
     db = FlingDatabase()
 
     try:
@@ -335,18 +343,19 @@ def testcase2(V):
 
 if __name__ == '__main__':
     V = [Vertex(0, 0),
-         Vertex(0, 5),
-         Vertex(3, 5),
+         Vertex(0, 1),
+         Vertex(0, 2),
+         Vertex(1, 1),
+         Vertex(2, 1),
+         Vertex(2, 3),
+         Vertex(3, 2),
+         Vertex(3, 6),
+         Vertex(4, 2),
          Vertex(4, 3),
-         Vertex(4, 4),
-         Vertex(5, 1),
+         Vertex(4, 6),
          Vertex(5, 4),
-         Vertex(5, 6),
-         Vertex(6, 1),
-         Vertex(6, 2),
-         Vertex(7, 0),
-         Vertex(7, 1),
-         Vertex(7, 2)]
+         Vertex(5, 5),
+         Vertex(6, 0)]
 
     testcase1(V)
     testcase2(V)
