@@ -28,6 +28,7 @@ import copy
 import json
 import sqlite3
 import logging
+import time
 
 
 logging.basicConfig(filename='/tmp/fling.log',
@@ -35,10 +36,15 @@ logging.basicConfig(filename='/tmp/fling.log',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+class PuzzleTooExpensiveError(Exception):
+    pass
+
+
 class Status:
     FAILURE = 0
     SUCCESS = 1
     NO_SOLUTION = "NO_SOLUTION"
+    TOO_EXPENSIVE = "TOO_EXPENSIVE"
 
 
 class Stats:
@@ -251,6 +257,8 @@ def _solve(V, G, P, s):
     s.edges_discovered += len(E)
 
     for e in E:
+        if int(time.clock()) > 7:
+            raise PuzzleTooExpensiveError
         s.edges_searched += 1
         W = apply_edge(e, V)
         G.append(W)
@@ -272,8 +280,12 @@ def solve(p):
     p should be a graph in json string format.
 
     A 2-tuple of json strings `(G, P)' is returned if a solution is found.
+
     If p cannot be parsed or if a solution is not found, a 2-tuple of empty
     strings is returned.
+
+    If the puzzle is deemed `TOO_EXPENSIVE', the 2-tuple [], 'TOO_EXPENSIVE'
+    is returned.
 
     G is an array of graphs representing the puzzle transitions.
 
@@ -304,41 +316,20 @@ def solve(p):
         return (json.dumps(G, cls=VertexEncoder, separators=(',', ':')),
                 json.dumps(P, cls=VertexEncoder, separators=(',', ':')))
     else:
-        if _solve(V, G, P, Stats()):
-            db.put_solution(V, G, P)
-            return (json.dumps(G, cls=VertexEncoder, separators=(',', ':')),
-                    json.dumps(P, cls=VertexEncoder, separators=(',', ':')))
-        else:
-            db.put_solution(V, [], Status.NO_SOLUTION)
+        try:
+            if _solve(V, G, P, Stats()):
+                db.put_solution(V, G, P)
+                return (json.dumps(G, cls=VertexEncoder, separators=(',', ':')),
+                        json.dumps(P, cls=VertexEncoder, separators=(',', ':')))
+            else:
+                db.put_solution(V, [], Status.NO_SOLUTION)
+                return '', ''
+        except PuzzleTooExpensiveError:
+            logging.error('PuzzleTooExpensiveError: %s' % p)
+            return '', Status.TOO_EXPENSIVE
+        except:
+            logging.error('Unknown Error: %s' % p)
             return '', ''
-
-
-def testcase1(V):
-    print_graph(V)
-
-    db = FlingDatabase()
-    G, P = db.get_solution(V)
-
-    if P == Status.NO_SOLUTION:
-        print "Using cached..."
-        print "No solution found"
-    elif P:
-        print "Using cached solution..."
-        print_solution(G, P)
-    else:
-        print "Solving..."
-        if _solve(V, G, P, Stats()):
-            db.put_solution(V, G, P)
-            print_solution(G, P)
-        else:
-            db.put_solution(V, [], Status.NO_SOLUTION)
-            print "No solution found"
-
-
-def testcase2(V):
-    G, P = solve(graph_to_json(V))
-    for x in (graph_to_json(V), G, P):
-        print x
 
 
 if __name__ == '__main__':
@@ -357,5 +348,4 @@ if __name__ == '__main__':
          Vertex(5, 5),
          Vertex(6, 0)]
 
-    testcase1(V)
-    testcase2(V)
+    solve(json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')))
