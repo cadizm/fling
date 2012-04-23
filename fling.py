@@ -333,19 +333,27 @@ def solve(p):
 
 
 if __name__ == '__main__':
-    V = [Vertex(0, 0),
-         Vertex(0, 1),
-         Vertex(0, 2),
-         Vertex(1, 1),
-         Vertex(2, 1),
-         Vertex(2, 3),
-         Vertex(3, 2),
-         Vertex(3, 6),
-         Vertex(4, 2),
-         Vertex(4, 3),
-         Vertex(4, 6),
-         Vertex(5, 4),
-         Vertex(5, 5),
-         Vertex(6, 0)]
+#    V = [Vertex(0, 0),
+#         Vertex(0, 1),
+#         Vertex(0, 2),
+#         Vertex(1, 1),
+#         Vertex(2, 1),
+#         Vertex(2, 3),
+#         Vertex(3, 2),
+#         Vertex(3, 6),
+#         Vertex(4, 2),
+#         Vertex(4, 3),
+#         Vertex(4, 6),
+#         Vertex(5, 4),
+#         Vertex(5, 5),
+#         Vertex(6, 0)]
+#    solve(json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')))
 
-    solve(json.dumps(sorted(V), cls=VertexEncoder, separators=(',', ':')))
+    V = '[{"c":5,"r":0},{"c":1,"r":1},{"c":6,"r":2},{"c":1,"r":4},{"c":2,"r":4},{"c":3,"r":4},{"c":4,"r":4},{"c":6,"r":4},{"c":1,"r":5},{"c":2,"r":5},{"c":0,"r":6},{"c":2,"r":6},{"c":3,"r":6},{"c":2,"r":7}]'
+    solve(V)
+
+    V = json.loads(V, object_hook=Vertex.json_hook)
+    G, P = FlingDatabase().get_solution(V)
+
+    print_graph(V)
+    print_solution(G, P)
