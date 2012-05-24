@@ -255,9 +255,11 @@ def _solve(V, G, P, s):
 
     E = find_edges(V)
     s.edges_discovered += len(E)
+    t1 = int(time.time())
 
     for e in E:
-        if int(time.clock()) > 7:
+        t2 = int(time.time())
+        if t2 - t1 > 7:
             raise PuzzleTooExpensiveError
         s.edges_searched += 1
         W = apply_edge(e, V)
