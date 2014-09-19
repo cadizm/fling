@@ -1,3 +1,17 @@
+=====
+Fling
+=====
+
+Fling (for iOS) Solver
+
+Contact
+=======
+
+michael.cadiz@gmail.com
+
+Example
+=======
+
 +---+---+---+---+---+---+---+
 | A |   |   |   | B |   |   |
 +---+---+---+---+---+---+---+
